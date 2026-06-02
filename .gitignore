@@ -13,5 +13,8 @@ data/vector_store/
 data/knowledge_graph.html
 data/knowledge_graph.json
 
+# 评测产出
+data/evaluation_report.json
+
 # pyvis 生成的前端依赖
 lib/
