@@ -257,6 +257,21 @@ python3 verify_claims.py
 
 ### config.sh 配置 (生成和评测用两个独立 LLM)
 
+打开 `config.sh`，顶部有手动粘贴 Key 的入口：
+
+```bash
+# ╔══════════════════════════════════════════════════════╗
+# ║            ★ 手动设置 API Key (在此粘贴) ★            ║
+# ╚══════════════════════════════════════════════════════╝
+
+export EVAL_GEN_API_KEY=***     # ← 粘贴生成模型的 Key
+export EVAL_JUDGE_API_KEY=***   # ← 粘贴评测模型的 Key
+```
+
+如果保留占位符 `***，会自动从 Hermes 的 `~/.hermes/.env` 读取已配置的 Key。
+
+模型地址在下方，按需修改：
+
 ```bash
 # ── 生成 LLM：写答案（建议能力强）──
 export EVAL_GEN_BASE_URL="https://token-plan-cn.xiaomimimo.com/anthropic"
@@ -265,17 +280,6 @@ export EVAL_GEN_MODEL="mimo-v2.5-pro"
 # ── 评测 LLM：打分（建议便宜/中立，避免自评偏高）──
 export EVAL_JUDGE_BASE_URL="https://api.deepseek.com/v1"
 export EVAL_JUDGE_MODEL="deepseek-chat"
-
-# 懒人模式: 生成和评测用同一个
-# export EVAL_JUDGE_BASE_URL="$EVAL_GEN_BASE_URL"
-# export EVAL_JUDGE_MODEL="$EVAL_GEN_MODEL"
-
-# 备选: OpenAI
-# export EVAL_GEN_MODEL="gpt-4o"
-# export EVAL_JUDGE_MODEL="gpt-4o-mini"
-# 备选: 本地 Ollama
-# export EVAL_GEN_MODEL="qwen2.5:14b"
-# export EVAL_JUDGE_MODEL="qwen2.5:7b"
 ```
 
 ---
