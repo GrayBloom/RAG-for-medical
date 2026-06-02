@@ -1,0 +1,81 @@
+{
+  "summary": {
+    "total_cases": 5,
+    "avg_claim_support_rate": 0.0,
+    "support_rate_easy": 0.0,
+    "support_rate_medium": 0.0,
+    "support_rate_hard": 0.0
+  },
+  "details": [
+    {
+      "case_id": "30/70混_dosage",
+      "query": "30/70混合重组人胰岛素注射怎么用？每次多少剂量？",
+      "expected_drug": "30/70混合重组人胰岛素注射液",
+      "difficulty": "easy",
+      "answer": "[无LLM模式] 检索到 5 条相关内容",
+      "context_length": 1571,
+      "judge_scores": {},
+      "claim_verification": {
+        "support_rate": 0.0,
+        "supported": 0,
+        "total": 1
+      }
+    },
+    {
+      "case_id": "30/70混_lookup",
+      "query": "介绍一下30/70混合重组人胰岛素注射",
+      "expected_drug": "30/70混合重组人胰岛素注射液",
+      "difficulty": "easy",
+      "answer": "[无LLM模式] 检索到 5 条相关内容",
+      "context_length": 703,
+      "judge_scores": {},
+      "claim_verification": {
+        "support_rate": 0.0,
+        "supported": 0,
+        "total": 1
+      }
+    },
+    {
+      "case_id": "丙氨酰谷氨酰_ind_包括处于分解",
+      "query": "治疗包括处于分解代谢和高代谢状况的患者用什么药？",
+      "expected_drug": "丙氨酰谷氨酰胺注射液",
+      "difficulty": "medium",
+      "answer": "[无LLM模式] 检索到 5 条相关内容",
+      "context_length": 837,
+      "judge_scores": {},
+      "claim_verification": {
+        "support_rate": 0.0,
+        "supported": 0,
+        "total": 1
+      }
+    },
+    {
+      "case_id": "ω-3鱼油脂_ae",
+      "query": "ω-3鱼油脂防乳注射液有什么不良反应？",
+      "expected_drug": "ω-3鱼油脂防乳注射液",
+      "difficulty": "medium",
+      "answer": "[无LLM模式] 检索到 5 条相关内容",
+      "context_length": 1047,
+      "judge_scores": {},
+      "claim_verification": {
+        "support_rate": 0.0,
+        "supported": 0,
+        "total": 1
+      }
+    },
+    {
+      "case_id": "ω-3鱼油脂_hard",
+      "query": "患者出现当口服或肠内营养不可能，应该如何处理？",
+      "expected_drug": "ω-3鱼油脂防乳注射液",
+      "difficulty": "hard",
+      "answer": "[无LLM模式] 检索到 5 条相关内容",
+      "context_length": 1143,
+      "judge_scores": {},
+      "claim_verification": {
+        "support_rate": 0.0,
+        "supported": 0,
+        "total": 1
+      }
+    }
+  ]
+}
