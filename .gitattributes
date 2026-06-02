@@ -1,0 +1,9 @@
+# 文本文件统一 LF 换行
+*.py text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
