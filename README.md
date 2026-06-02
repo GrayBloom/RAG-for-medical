@@ -23,10 +23,18 @@
                   └──────────┬──────────┘
                              │
                              ▼
-                  ┌─────────────────────┐
-                  │   LLM 生成答案       │
-                  │   (OpenAI 兼容 API)  │
-                  └──────────┬──────────┘
+                  ┌──────────────────────────┐
+                  │   LLM 生成答案             │
+                  │   生成 LLM (EVAL_GEN_*)    │  ← 能力强
+                  │   如 mimo-v2.5-pro         │
+                  └──────────┬───────────────┘
+                             │
+                             ▼
+                  ┌──────────────────────────┐
+                  │   LLM 评测打分             │
+                  │   评测 LLM (EVAL_JUDGE_*)  │  ← 便宜中立
+                  │   如 deepseek-chat         │
+                  └──────────┬───────────────┘
                              │
                              ▼
                   ┌─────────────────────────────────┐
@@ -177,10 +185,14 @@ python evaluate.py "/mnt/d/Python_Program/RAG/cleaned_MD_optimized"
 
 ## LLM 生成评测
 
-`evaluate_generation.py` 接入 LLM 评测 RAG 系统**生成答案**的质量，支持两种模式：
+`evaluate_generation.py` 接入 LLM 评测 RAG 系统**生成答案**的质量。生成和评测使用**两个独立 LLM**，避免自评偏高：
+
+> **生成 LLM** — 写答案，建议用能力强的模型  
+> **评测 LLM** — 打分，建议用便宜的/不同家的中立模型  
+> 配置方式见下方 [config.sh](#configsh-配置-生成和评测用两个独立-llm)
 
 ```bash
-# 配置 API (修改 config.sh 切换模型/地址)
+# 配置 API
 source config.sh
 
 # LLM 模式 — 全维度评测
@@ -197,18 +209,25 @@ python evaluate_generation.py --no-llm --sample 10
 ```
 测试用例
   │
-  ├── 1. RAG 检索上下文 ──→ 2. LLM 生成答案
-  │                              │
-  │          ┌────────────────────┼────────────────────┐
-  │          ▼                    ▼                    ▼
-  │    LLM-as-Judge         LLM-as-Judge         LLM-as-Judge
-  │    忠实度 (1-5)          相关性 (1-5)          完整性 (1-5)
-  │    "有幻觉吗？"          "答对问题了吗？"      "关键信息覆盖全吗？"
-  │          └────────────────────┼────────────────────┘
-  │                               ▼
-  │                         综合分 (加权)
+  ├── 1. RAG 检索上下文
+  │         │
+  │         ▼
+  │    2. 生成 LLM 写答案 ──── EVAL_GEN_MODEL (如 mimo-v2.5-pro)
+  │         │
+  │         │    ┌─────────────────────────────────────┐
+  │         │    │       3. 评测 LLM 打分               │
+  │         │    │        EVAL_JUDGE_MODEL              │
+  │         │    │        (如 deepseek-chat)             │
+  │         │    ├─────────────┬─────────────┬─────────┤
+  │         │    ▼             ▼             ▼         │
+  │         │  忠实度 (1-5)   相关性 (1-5)   完整性 (1-5) │
+  │         │  "有幻觉吗？"   "答对问题了吗？" "信息覆盖全吗？"│
+  │         │    └─────────────┴─────────────┴─────────┤
+  │         │                    ▼                     │
+  │         │              综合分 (加权)                │
+  │         └──────────────────────────────────────────┘
   │
-  └── 3. 声明支持率 (无需 LLM)
+  └── 4. 声明支持率 (无需 LLM)
          └── 每句话在上下文中能找到依据吗？
              逐句拆分 → 文本匹配 → 支持/不支持
 ```
@@ -236,24 +255,27 @@ python evaluate_generation.py --no-llm --sample 10
 python3 verify_claims.py
 ```
 
-### config.sh 配置
+### config.sh 配置 (生成和评测用两个独立 LLM)
 
 ```bash
-# 当前: xiaomi (与 Hermes Agent 共用)
-export EVAL_BASE_URL="https://token-plan-cn.xiaomimimo.com/anthropic"
-export EVAL_MODEL="mimo-v2.5-pro"
+# ── 生成 LLM：写答案（建议能力强）──
+export EVAL_GEN_BASE_URL="https://token-plan-cn.xiaomimimo.com/anthropic"
+export EVAL_GEN_MODEL="mimo-v2.5-pro"
 
-# 备选: DeepSeek
-# export EVAL_BASE_URL="https://api.deepseek.com/v1"
-# export EVAL_MODEL="deepseek-chat"
+# ── 评测 LLM：打分（建议便宜/中立，避免自评偏高）──
+export EVAL_JUDGE_BASE_URL="https://api.deepseek.com/v1"
+export EVAL_JUDGE_MODEL="deepseek-chat"
+
+# 懒人模式: 生成和评测用同一个
+# export EVAL_JUDGE_BASE_URL="$EVAL_GEN_BASE_URL"
+# export EVAL_JUDGE_MODEL="$EVAL_GEN_MODEL"
 
 # 备选: OpenAI
-# export EVAL_BASE_URL="https://api.openai.com/v1"
-# export EVAL_MODEL="gpt-4o-mini"
-
+# export EVAL_GEN_MODEL="gpt-4o"
+# export EVAL_JUDGE_MODEL="gpt-4o-mini"
 # 备选: 本地 Ollama
-# export EVAL_BASE_URL="http://localhost:11434/v1"
-# export EVAL_MODEL="qwen2.5:7b"
+# export EVAL_GEN_MODEL="qwen2.5:14b"
+# export EVAL_JUDGE_MODEL="qwen2.5:7b"
 ```
 
 ---

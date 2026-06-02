@@ -30,17 +30,18 @@ from evaluate import TestSetBuilder, TestCase
 # ═══════════════════════════════════════════
 
 class LLMClient:
-    """OpenAI-compatible API 客户端，纯 stdlib"""
+    """OpenAI-compatible API 客户端，纯 stdlib。
+    参数全显式传入，不读环境变量。用工厂函数创建实例。
+    """
 
-    def __init__(self, base_url: str = None, api_key: str = None, model: str = None):
-        self.base_url = (base_url or os.getenv("EVAL_BASE_URL", "")).rstrip("/")
-        self.api_key = api_key or os.getenv("EVAL_API_KEY", "")
-        self.model = model or os.getenv("EVAL_MODEL", "mimo-v2.5-pro")
+    def __init__(self, base_url: str, api_key: str, model: str):
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.model = model
 
         if not self.api_key:
-            raise ValueError("未设置 API Key，请先执行: source config.sh  或 export EVAL_API_KEY=...")
+            raise ValueError(f"未设置 API Key for model={model}")
 
-        # 自动补齐 /chat/completions
         if not self.base_url.endswith("/chat/completions"):
             self.base_url += "/chat/completions"
 
@@ -83,6 +84,28 @@ class LLMClient:
                 return f"[Error] {str(e)[:200]}"
 
         return "[Error] max retries exceeded"
+
+
+# ── 工厂函数：从环境变量创建两个独立客户端 ──
+
+def create_gen_client() -> Optional[LLMClient]:
+    """创建生成用 LLM 客户端 (EVAL_GEN_* 环境变量)"""
+    base_url = os.getenv("EVAL_GEN_BASE_URL", "")
+    api_key = os.getenv("EVAL_GEN_API_KEY", "")
+    model = os.getenv("EVAL_GEN_MODEL", "")
+    if not base_url or not api_key:
+        return None
+    return LLMClient(base_url, api_key, model)
+
+
+def create_judge_client() -> Optional[LLMClient]:
+    """创建评测用 LLM 客户端 (EVAL_JUDGE_* 环境变量)"""
+    base_url = os.getenv("EVAL_JUDGE_BASE_URL", "")
+    api_key = os.getenv("EVAL_JUDGE_API_KEY", "")
+    model = os.getenv("EVAL_JUDGE_MODEL", "")
+    if not base_url or not api_key:
+        return None
+    return LLMClient(base_url, api_key, model)
 
 
 # ═══════════════════════════════════════════
@@ -336,12 +359,17 @@ class ClaimVerifier:
 # ═══════════════════════════════════════════
 
 class GenerationEvaluator:
-    """生成质量评测主控"""
+    """生成质量评测主控。
+    gen_llm: 生成答案用 (EVAL_GEN_*)
+    judge_llm: 评 分 用  (EVAL_JUDGE_*)
+    两者可指向不同模型以保证评测独立性。
+    """
 
     def __init__(self, rag: HybridRAG, vector_store: VectorStore,
-                 llm: Optional[LLMClient] = None):
-        self.generator = RAGAnswerGenerator(rag, llm)
-        self.judge = LLMJudge(llm) if llm else None
+                 gen_llm: Optional[LLMClient] = None,
+                 judge_llm: Optional[LLMClient] = None):
+        self.generator = RAGAnswerGenerator(rag, gen_llm)
+        self.judge = LLMJudge(judge_llm) if judge_llm else None
         self.verifier = ClaimVerifier(vector_store)
 
     def evaluate(self, test_cases: list[TestCase], sample_size: int = None) -> dict:
@@ -467,14 +495,24 @@ def run_generation_eval(md_dir: str, llm_mode: bool = True, sample_size: int = N
     print("  RAG 生成质量评测")
     print("=" * 60)
 
-    # 初始化 LLM
-    llm = None
+    # 初始化双 LLM
+    gen_llm = None
+    judge_llm = None
     if llm_mode:
-        try:
-            llm = LLMClient()
-            print(f"\n[LLM] {llm.model} @ {llm.base_url}")
-        except ValueError as e:
-            print(f"\n[WARN] {e}")
+        gen_llm = create_gen_client()
+        judge_llm = create_judge_client()
+
+        if gen_llm:
+            print(f"\n[生成LLM] {gen_llm.model} @ {gen_llm.base_url}")
+        else:
+            print("\n[WARN] 未配置生成 LLM (EVAL_GEN_*)，请 source config.sh")
+
+        if judge_llm:
+            print(f"[评测LLM] {judge_llm.model} @ {judge_llm.base_url}")
+        else:
+            print("[WARN] 未配置评测 LLM (EVAL_JUDGE_*)，无法 LLM 评分")
+
+        if not gen_llm and not judge_llm:
             print("[INFO] 降级为纯向量模式（仅声明验证）")
             llm_mode = False
 
@@ -510,7 +548,7 @@ def run_generation_eval(md_dir: str, llm_mode: bool = True, sample_size: int = N
     print(f"[TestSet] {len(test_cases)} 条用例 (总计 {len(all_cases)})")
 
     # 运行评测
-    evaluator = GenerationEvaluator(rag, vs, llm)
+    evaluator = GenerationEvaluator(rag, vs, gen_llm=gen_llm, judge_llm=judge_llm)
     result = evaluator.evaluate(test_cases)
 
     # 输出报告
