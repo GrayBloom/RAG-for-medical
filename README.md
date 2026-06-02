@@ -3,43 +3,84 @@
 ## 架构
 
 ```
-                    ┌─────────────────┐
-                    │   用户查询        │
-                    └────────┬────────┘
+                        ┌─────────────────┐
+                        │   用户查询        │
+                        └────────┬────────┘
+                                 │
+                  ┌──────────────┼──────────────┐
+                  ▼                             ▼
+       ┌──────────────────┐          ┌──────────────────┐
+       │  向量语义检索      │          │  知识图谱查询      │
+       │  ChromaDB + BGE   │          │  NetworkX 图      │
+       │  (97个切片)        │          │  (70节点/80边)    │
+       └────────┬─────────┘          └────────┬─────────┘
+                │                             │
+                └──────────────┬──────────────┘
+                               ▼
+                  ┌─────────────────────┐
+                  │   结果融合 & 排序     │
+                  │   HybridRAG Engine  │
+                  └──────────┬──────────┘
                              │
-              ┌──────────────┼──────────────┐
-              ▼                             ▼
-   ┌──────────────────┐          ┌──────────────────┐
-   │  向量语义检索      │          │  知识图谱查询      │
-   │  ChromaDB + BGE   │          │  NetworkX 图      │
-   │  (语义匹配)        │          │  (实体+关系)       │
-   └────────┬─────────┘          └────────┬─────────┘
-            │                             │
-            └──────────────┬──────────────┘
-                           ▼
-              ┌─────────────────────┐
-              │   结果融合 & 排序     │
-              │   HybridRAG Engine  │
-              └─────────────────────┘
+                             ▼
+                  ┌──────────────────────────┐
+                  │   LLM 生成答案             │
+                  │   生成 LLM (EVAL_GEN_*)    │  ← 能力强
+                  │   如 mimo-v2.5-pro         │
+                  └──────────┬───────────────┘
+                             │
+                             ▼
+                  ┌──────────────────────────┐
+                  │   LLM 评测打分             │
+                  │   评测 LLM (EVAL_JUDGE_*)  │  ← 便宜中立
+                  │   如 deepseek-chat         │
+                  └──────────┬───────────────┘
+                             │
+                             ▼
+                  ┌─────────────────────────────────┐
+                  │           评测系统                │
+                  └──────────┬──────────────────────┘
+                             │
+     ┌───────────────────────┼───────────────────────┐
+     ▼                       ▼                       ▼
+┌──────────────┐    ┌──────────────┐    ┌──────────────────┐
+│   检索评测     │    │   生成评测     │    │    图谱评测        │
+│  evaluate.py  │    │ evaluate_     │    │ (同 evaluate.py)   │
+│               │    │ generation.py │    │                    │
+│  Recall@K     │    │  忠实度 1-5   │    │  实体覆盖率        │
+│  MRR          │    │  相关性 1-5   │    │  关系准确率        │
+│  NDCG         │    │  完整性 1-5   │    │  图密度/度数       │
+│  Hit Rate     │    │  声明支持率    │    │                    │
+└──────────────┘    └──────────────┘    └──────────────────┘
+     ▼                       ▼
+┌──────────────────────────────────────────┐
+│  71条自动测试用例 (easy / medium / hard)  │
+│  零人工标注 — 从结构化字段自动生成         │
+└──────────────────────────────────────────┘
 ```
 
 ## 项目结构
 
 ```
 rag-system/
-├── parse_docs.py              # MD 文档解析器 (9份说明书 → 97个切片)
-├── build_vector_store.py      # 向量库构建 (ChromaDB + BGE embedding)
-├── build_knowledge_graph.py   # 知识图谱构建 (NetworkX)
-├── rag_query.py               # 混合 RAG 查询引擎
-├── evaluate.py                # 评测模块（自动生成测试集）
-├── build_all.py               # 一键构建脚本
+├── parse_docs.py                # MD 文档解析器 (9份说明书 → 97个切片)
+├── build_vector_store.py        # 向量库构建 (ChromaDB + BGE embedding)
+├── build_knowledge_graph.py     # 知识图谱构建 (NetworkX)
+├── rag_query.py                 # 混合 RAG 查询引擎
+├── evaluate.py                  # 检索 + 图谱评测 (自动生成测试集)
+├── evaluate_generation.py       # LLM 生成质量评测 (忠实度/相关性/完整性/声明支持率)
+├── config.sh                    # LLM 评测 API 配置 (baseurl/key/model)
+├── verify_claims.py             # 声明验证逻辑独立测试
+├── build_all.py                 # 一键构建脚本
 ├── requirements.txt
 ├── data/
-│   ├── vector_store/          # ChromaDB 持久化
-│   ├── knowledge_graph.json   # 图谱 JSON
-│   ├── knowledge_graph.html   # 交互式可视化
-│   └── models/                # 本地 embedding 模型
-└── .venv/                     # Python 虚拟环境
+│   ├── vector_store/            # ChromaDB 持久化
+│   ├── knowledge_graph.json     # 图谱 JSON
+│   ├── knowledge_graph.html     # 交互式可视化
+│   ├── evaluation_report.json   # 检索评测报告
+│   ├── evaluation_generation_report.json  # 生成评测报告
+│   └── models/                  # 本地 embedding 模型
+└── .venv/                       # Python 虚拟环境
 ```
 
 ## 快速开始
@@ -89,9 +130,11 @@ print(result["context"])  # 增强上下文，可喂给任何 LLM
 
 浏览器打开 `data/knowledge_graph.html`
 
-## 评测
+---
 
-`evaluate.py` 从结构化字段**自动生成测试集**（无需人工标注），覆盖三个维度：
+## 检索 + 图谱评测
+
+`evaluate.py` 从结构化字段**自动生成测试集**（无需人工标注），覆盖向量检索和知识图谱两个维度：
 
 ```bash
 python evaluate.py "/mnt/d/Python_Program/RAG/cleaned_MD_optimized"
@@ -111,7 +154,7 @@ python evaluate.py "/mnt/d/Python_Program/RAG/cleaned_MD_optimized"
 > - **medium** — 查询含适应症/禁忌关键词 ("什么药治疗糖尿病")
 > - **hard** — 纯症状描述不含药品名 ("患者出现肝内胆汁淤积如何处理")
 
-### 当前评测结果
+### 当前结果
 
 ```
 评测用例: 71 条 (easy=36, medium=29, hard=6)
@@ -138,6 +181,109 @@ python evaluate.py "/mnt/d/Python_Program/RAG/cleaned_MD_optimized"
   平均上下文长度:        1090 chars
 ```
 
+---
+
+## LLM 生成评测
+
+`evaluate_generation.py` 接入 LLM 评测 RAG 系统**生成答案**的质量。生成和评测使用**两个独立 LLM**，避免自评偏高：
+
+> **生成 LLM** — 写答案，建议用能力强的模型  
+> **评测 LLM** — 打分，建议用便宜的/不同家的中立模型  
+> 配置方式见下方 [config.sh](#configsh-配置-生成和评测用两个独立-llm)
+
+```bash
+# 配置 API
+source config.sh
+
+# LLM 模式 — 全维度评测
+python evaluate_generation.py --sample 10
+
+# 纯向量模式 — 仅声明验证 (无需 API，秒级)
+python evaluate_generation.py --no-llm --sample 10
+
+# 报告输出到 data/evaluation_generation_report.json
+```
+
+### 评测流程
+
+```
+测试用例
+  │
+  ├── 1. RAG 检索上下文
+  │         │
+  │         ▼
+  │    2. 生成 LLM 写答案 ──── EVAL_GEN_MODEL (如 mimo-v2.5-pro)
+  │         │
+  │         │    ┌─────────────────────────────────────┐
+  │         │    │       3. 评测 LLM 打分               │
+  │         │    │        EVAL_JUDGE_MODEL              │
+  │         │    │        (如 deepseek-chat)             │
+  │         │    ├─────────────┬─────────────┬─────────┤
+  │         │    ▼             ▼             ▼         │
+  │         │  忠实度 (1-5)   相关性 (1-5)   完整性 (1-5) │
+  │         │  "有幻觉吗？"   "答对问题了吗？" "信息覆盖全吗？"│
+  │         │    └─────────────┴─────────────┴─────────┤
+  │         │                    ▼                     │
+  │         │              综合分 (加权)                │
+  │         └──────────────────────────────────────────┘
+  │
+  └── 4. 声明支持率 (无需 LLM)
+         └── 每句话在上下文中能找到依据吗？
+             逐句拆分 → 文本匹配 → 支持/不支持
+```
+
+### 四项指标
+
+| 指标 | 含义 | 评测方式 | 分数 |
+|------|------|----------|------|
+| **忠实度** Faithfulness | 答案是否严格基于上下文，有无幻觉 | LLM-as-Judge | 1-5 |
+| **相关性** Relevance | 答案是否直接回应了问题 | LLM-as-Judge | 1-5 |
+| **完整性** Completeness | 答案是否覆盖了上下文中的关键信息 | LLM-as-Judge | 1-5 |
+| **声明支持率** Claim Support | 答案每句话在上下文中找到依据的比例 | 文本匹配 (免费) | 0-100% |
+| **综合分** Overall | 忠实度×0.4 + 相关性×0.3 + 完整性×0.3 | 加权求和 | 1-5 |
+
+### 声明支持率验证效果
+
+| 场景 | 支持率 | 预期 |
+|------|--------|------|
+| 忠实回答 (声明全部来自上下文) | 80% | ≥ 50% |
+| 含幻觉回答 (编造内容) | 0% | < 30% |
+| 空上下文 | 0% | 0% |
+
+```bash
+# 独立验证声明逻辑
+python3 verify_claims.py
+```
+
+### config.sh 配置 (生成和评测用两个独立 LLM)
+
+打开 `config.sh`，顶部有手动粘贴 Key 的入口：
+
+```bash
+# ╔══════════════════════════════════════════════════════╗
+# ║            ★ 手动设置 API Key (在此粘贴) ★            ║
+# ╚══════════════════════════════════════════════════════╝
+
+export EVAL_GEN_API_KEY=***     # ← 粘贴生成模型的 Key
+export EVAL_JUDGE_API_KEY=***   # ← 粘贴评测模型的 Key
+```
+
+如果保留占位符 `***，会自动从 Hermes 的 `~/.hermes/.env` 读取已配置的 Key。
+
+模型地址在下方，按需修改：
+
+```bash
+# ── 生成 LLM：写答案（建议能力强）──
+export EVAL_GEN_BASE_URL="https://token-plan-cn.xiaomimimo.com/anthropic"
+export EVAL_GEN_MODEL="mimo-v2.5-pro"
+
+# ── 评测 LLM：打分（建议便宜/中立，避免自评偏高）──
+export EVAL_JUDGE_BASE_URL="https://api.deepseek.com/v1"
+export EVAL_JUDGE_MODEL="deepseek-chat"
+```
+
+---
+
 ## 数据统计
 
 | 指标 | 数值 |
@@ -148,6 +294,8 @@ python evaluate.py "/mnt/d/Python_Program/RAG/cleaned_MD_optimized"
 | 图谱边 | 80 |
 | 实体类型 | Drug, Disease, Symptom, Route, Population |
 | 关系类型 | TREATS, HAS_SIDE_EFFECT, CONTRAINDICATED_FOR, INTERACTS_WITH, ADMINISTERED_VIA |
+| 自动测试用例 | 71 条 (含 easy / medium / hard 三级) |
+| 评测维度 | 召回率 + 图谱质量 + 生成质量 (3类 × 4+指标) |
 
 ## 查询示例
 
